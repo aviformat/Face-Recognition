@@ -5,14 +5,20 @@ import sys
 from sklearn import svm
 import collections
 import pickle
+from pymongo import MongoClient
 
 params=[]
-names=['abhishek','ankit','avi','shahsank','utsav']
+count=0
+name1,outputs="",""
+
+names=['abhishek','ankit','avi','ravi','shahsank','vinayak']
 hog = cv2.HOGDescriptor()
 camera=cv2.VideoCapture(0)
 face_cascade = cv2.CascadeClassifier('./cascades/haarcascade_frontalface_alt.xml')
 
-clf = pickle.load(open('finalized_model.sav', 'rb'))
+clf = pickle.load(open('final.sav', 'rb'))
+client = MongoClient("mongodb://iot:iot@ds119049.mlab.com:19049/iot")
+db = client.iot
 while(True):
         read,img=camera.read()
 
@@ -28,6 +34,7 @@ while(True):
             roi=gray[y:y + h, x:x + w]
 
             roi=cv2.resize(roi,(64,128))
+            roi = cv2.bilateralFilter(roi, 8, 50, 50)
             # try1 = np.asarray(roi)
             # cv2.imshow("blah", try1)
             # cv2.waitKey(0)
@@ -35,7 +42,7 @@ while(True):
             #print roi.shape
 
             # cv2.destroyAllWindows()
-            roi = np.asarray(roi)
+            # roi = np.asarray(roi)
             #print roi.shape
             roi=roi.ravel()
             # im1 = cv2.GaussianBlur(roi, (5, 5), 0)
@@ -49,14 +56,47 @@ while(True):
             #print roi
 
             params = clf.predict(roi)
-            # class_probabilities = clf.predict_proba(roi)
-            # print class_probabilities
+            #print params
+            class_probabilities = clf.predict_proba(roi)
+            #print class_probabilities
+            # print params[0]
+            # print class_probabilities[0][params[0]]
+
             # print params
             # print "Label: %d"%(params[0])
-            cv2.putText(img,str(names[params[0]]),(x,y-20),cv2.FONT_HERSHEY_SIMPLEX,1,255,2)
+            if max(class_probabilities[0])>0.60:
+                cv2.putText(img,str(names[params[0]]),(x,y-20),cv2.FONT_HERSHEY_SIMPLEX,1,255,2)
+                name1 = names[params[0]]
+                outputs = "Authorized Person Recognized"
+                count += 1
+
+
+
+            else:
+                cv2.putText(img,'Unknown',(x,y-20),cv2.FONT_HERSHEY_SIMPLEX,1,255,2)
+                name1 = "NA"
+                outputs =  "Unknown Person Detected"
+                count += 1
+
+
+        if count>50:
+            break
 
         cv2.imshow("camera",img)
         if cv2.waitKey(1000/12) & 0xff == ord("q"):
             break
+db.security.delete_many({})
+
+db.security.insert_one(
+    {
+        "name": name1,
+        "result": outputs
+    }
+)
+
+cursor = db.security.find({})
+for docs in cursor:
+    print docs['name']
+    print docs['result']
 cv2.destroyAllWindows()
 
